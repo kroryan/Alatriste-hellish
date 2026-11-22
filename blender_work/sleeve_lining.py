@@ -1,6 +1,47 @@
 """Add closed undershirt sleeves beneath the generated jacket."""
 body=next(part for part in parts if part.name=='AlatristeBody')
 old=body.data
+
+# Patch closed boundary loops in the armhole using their own skinned
+# vertices. The cloth beneath it covers the larger irregular openings.
+shell=bmesh.new()
+shell.from_mesh(old)
+boundaries={edge for edge in shell.edges if edge.is_boundary}
+uv_layer=shell.loops.layers.uv.active
+patched=0
+while boundaries:
+    first=boundaries.pop()
+    boundary={first}
+    pending=[first]
+    while pending:
+        edge=pending.pop()
+        for v in edge.verts:
+            connected=[other for other in v.link_edges if other in boundaries]
+            for other in connected:
+                boundaries.remove(other)
+                boundary.add(other)
+            pending.extend(connected)
+    rim={v for edge in boundary for v in edge.verts}
+    if len(boundary)!=len(rim) or not 4<=len(rim)<=145:continue
+    if any(sum(edge in boundary for edge in v.link_edges)!=2 for v in rim):continue
+    center=sum((v.co for v in rim),Vector())/len(rim)
+    if not (.155<abs(center.x)<.43 and 1.25<center.z<1.49):continue
+    if max((v.co-center).length for v in rim)>.085:continue
+    seam_uv={v:next((loop[uv_layer].uv.copy() for loop in v.link_loops),None) for v in rim}
+    patch=bmesh.ops.holes_fill(shell,edges=list(boundary),sides=145)['faces']
+    for face in patch:
+        face.smooth=True
+        face.material_index=0
+        for loop in face.loops:
+            if seam_uv[loop.vert] is not None:loop[uv_layer].uv=seam_uv[loop.vert]
+    if patch:
+        bmesh.ops.triangulate(shell,faces=patch)
+        patched+=1
+shell.to_mesh(old)
+shell.free()
+old.update()
+print('ARMHOLE_SEAMS_CLOSED',patched,flush=True)
+
 vertices=[]
 faces=[]
 uvs=[]
@@ -29,27 +70,28 @@ for side in ('Left','Right'):
               abs((item[0].co-shoulder).dot(vertical)+.062))[0]
     cloth_uv=surface_uv[cloth.index]
 
-    # Tuck the ends inside the jacket and keep the dark backing below
-    # the sleeve folds. Reuse the nearest sleeve texels from this model.
+    # Run the cloth from inside the jacket across the shoulder and down
+    # the upper sleeve. The lower half bridges the open axilla.
     rings=13
     segments=24
     start=len(vertices)
     for j in range(rings):
         t=j/(rings-1)
-        along=length*(-.25+.68*t)
+        along=length*(-.35+.93*t)
         center=shoulder+axis*along
         nearby=[v.co-(shoulder+axis*a) for v,a in sleeve if abs(a-along)<.032]
         if len(nearby)>24:
             center+=radial*float(np.median([v.dot(radial) for v in nearby]))*.80
             center+=vertical*float(np.median([v.dot(vertical) for v in nearby]))*.80
-        profile=(.62+.38*math.sin(math.pi*t))*(1-.25*t)
-        center-=vertical*.012
+        profile=(.58+.42*math.sin(math.pi*t))*(1-.21*t)
+        center-=vertical*.010
         for k in range(segments):
             angle=2*math.pi*k/segments
-            p=center+profile*(radial*(.026*math.cos(angle))+vertical*(.034*math.sin(angle)))
+            lower_half=max(0.,-math.sin(angle))
+            p=center+profile*(radial*(.041*math.cos(angle))+vertical*((.032+.038*lower_half)*math.sin(angle)))
             vertices.append(tuple(p))
             uvs.append((cloth_uv[0]+.001*math.cos(angle),cloth_uv[1]+.002*t))
-            chest=1-smooth(.03,.27,t)
+            chest=1-smooth(.08,.47,t)
             weights.append({upper:1-chest,'Spine1':chest})
     for j in range(rings-1):
         for k in range(segments):

@@ -238,7 +238,10 @@ public static class AlatristeFinalBuild {
   Capture("Alatriste_Marta_fpp_wide",cam,new Vector3(-1.4f,1.4f,3.2f),false,1080,1080);
   cam.orthographic=true;
   var prop=map["RightHandProp"];cam.orthographicSize=.19f;Capture("Alatriste_Marta_hand_closeup",cam,prop.position+new Vector3(.3f,.2f,.65f),false,1000,1000,prop.position);cam.orthographicSize=1.18f;
-  map["RightForeArm"].localRotation*=Quaternion.AngleAxis(65,Vector3.right);Capture("Alatriste_Marta_pronation",cam,new Vector3(-1.5f,1.1f,4));
+  var rightForearm=map["RightForeArm"];
+  var rightAxis=map["RightHand"].position-rightForearm.position;
+  rightForearm.rotation=Quaternion.AngleAxis(65,rightAxis)*rightForearm.rotation;
+  Capture("Alatriste_Marta_pronation",cam,new Vector3(-1.5f,1.1f,4));
   UnityEngine.Object.DestroyImmediate(sword);foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
   map["Neck"].localRotation*=Quaternion.Euler(-18,22,-9);
   map["Head"].localRotation*=Quaternion.Euler(20,32,15);
@@ -254,6 +257,15 @@ public static class AlatristeFinalBuild {
   cam.orthographic=false;
   Capture("Alatriste_Marta_underarms",cam,new Vector3(.08f,1.04f,.94f),false,1000,950,new Vector3(0,1.49f,0));
   foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
+  foreach(var side in new[]{"Right","Left"}) {
+   float sign=side=="Right"?1:-1;
+   Aim(map,side+"Arm",side+"ForeArm",new Vector3(sign*.39f,-.03f,.94f));
+   Aim(map,side+"ForeArm",side+"Hand",new Vector3(sign*.38f,.04f,.94f));
+   CloseFingers(map,side);
+   var target=Vector3.Lerp(map[side+"Arm"].position,map[side+"Hand"].position,.34f);
+   Capture("Alatriste_Marta_extension_"+side,cam,new Vector3(sign*1.24f,1.48f,-1.55f),false,1000,900,target);
+   foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
+  }
   UnityEditor.SceneManagement.EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),D+"AlatristePreview.unity");
  }
 }

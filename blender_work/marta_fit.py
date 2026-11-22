@@ -1,3 +1,4 @@
+from mathutils import Quaternion
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 from mathutils.geometry import barycentric_transform
@@ -47,7 +48,11 @@ for side,refname in [('Left','HandLMesh'),('Right','HandRMESH')]:
  # Spread the palm-roll correction over the forearm, instead of concentrating
  # the whole rotation into the few centimetres occupied by the cuff.
  elbow=(MW @ original[side+'ForeArm']).translation;foreaxis=(h-elbow).normalized();forelength=(h-elbow).length
- rotation=Matrix(R.tolist()).to_quaternion();shift=Vector(R@np.array(h)+t)-h
+ palm_rotation=Matrix(R.tolist()).to_quaternion()
+ spin=Vector(palm_rotation[1:]).dot(foreaxis)
+ twist=Quaternion((palm_rotation.w,*(foreaxis*spin))).normalized()
+ if twist.w<0:twist.negate()
+ shift=Vector(R@np.array(h)+t)-h
  cuff_reference=load_reference('MankietLMESH' if side=='Left' else 'MankietRMESH')
  cloth_ids=[]
  for v in mesh.data.vertices:
@@ -56,8 +61,9 @@ for side,refname in [('Left','HandLMesh'),('Right','HandRMESH')]:
   if influence<.35 or v.index in ids:continue
   along=(v.co-elbow).dot(foreaxis)/forelength;strength=smooth(.12,1.0,along)*smooth(.35,.9,influence)
   if strength<=0:continue
-  q=Matrix.Identity(3).to_quaternion().slerp(rotation,strength)
-  v.co=h+q@(v.co-h)+shift*strength
+  q=Quaternion().slerp(twist,strength)
+  center=elbow+foreaxis*(v.co-elbow).dot(foreaxis)
+  v.co=center+q@(v.co-center)+shift*strength
   if along>.73:cloth_ids.append(v.index)
  for i in ids:
   v=mesh.data.vertices[i];p=v.co.copy();length=(p-h).dot(u);fitted=Vector(R@np.array(p)+t);p=fitted
@@ -150,6 +156,70 @@ for _ in range(4):
   weights[i]=.55*previous[i]+.45*previous[neighbors].mean(axis=0)
 for i,_ in region:
  setweights(i,{bone_names[j]:weights[i,j] for j in np.argsort(weights[i])[-4:]})
+
+# Rebuild each sleeve's weights from its own arm chain. The sampled garment
+# field identifies the shoulder transition, but cannot pull distant pieces of
+# the sleeve with the torso or send the cuff to an unrelated finger.
+for side,sign in (('Left',1),('Right',-1)):
+ upper,lower,hand,clavicle=[side+n for n in ('Arm','ForeArm','Hand','Shoulder')]
+ shoulder,elbow,wrist=[(MW @ original[n]).translation for n in (upper,lower,hand)]
+ upper_axis=(elbow-shoulder).normalized()
+ lower_axis=(wrist-elbow).normalized()
+ bend_axis=(upper_axis+lower_axis).normalized()
+ for v in mesh.data.vertices:
+  i=v.index
+  if i in hands or i in seam or i not in other or sign*V[i,0]<.145:continue
+  old={mesh.vertex_groups[g.group].name:g.weight for g in v.groups}
+  arm_sum=sum(old.get(n,0) for n in (upper,lower,hand,clavicle))
+  along=(v.co-shoulder).dot(upper_axis)
+  longitudinal=(v.co-elbow).dot(bend_axis)
+  radial_distance=((v.co-shoulder)-upper_axis*along).length
+  upper_clamped=max(0.,min((elbow-shoulder).length,along))
+  lower_clamped=max(0.,min((wrist-elbow).length,(v.co-elbow).dot(lower_axis)))
+  sleeve_distance=min((v.co-shoulder-upper_axis*upper_clamped).length,
+                      (v.co-elbow-lower_axis*lower_clamped).length)
+  if sleeve_distance>.117 and arm_sum>.001 and V[i,2]<1.43:
+   release=smooth(.117,.175,sleeve_distance)*(1-smooth(.16,.28,sign*V[i,0]))
+   if release>.001:
+    torso={n:w for n,w in old.items() if n not in (upper,lower,hand,clavicle)}
+    amount=sum(torso.values())
+    torso={n:w/amount for n,w in torso.items()} if amount>1e-4 else {'Spine1':1.}
+    old=mix(old,torso,release)
+    setweights(i,old)
+    arm_sum=sum(old.get(n,0) for n in (upper,lower,hand,clavicle))
+  sleeve_core=smooth(.035,.135,along)*(1-smooth(.08,.13,radial_distance))*smooth(.20,.29,sign*V[i,0])
+  arm_mask=max(smooth(.20,.72,arm_sum),sleeve_core)
+  if arm_mask<.001:continue
+  elbow_mix=smooth(-.072,.08,longitudinal)
+  wrist_mix=smooth(-.060,.024,(v.co-wrist).dot(lower_axis))*.92
+  shoulder_mix=(1-smooth(-.018,.075,along))*.20
+  sleeve_weights={
+   clavicle:shoulder_mix,
+   upper:(1-shoulder_mix)*(1-elbow_mix),
+   lower:(1-shoulder_mix)*elbow_mix*(1-wrist_mix),
+   hand:(1-shoulder_mix)*elbow_mix*wrist_mix,
+  }
+  setweights(i,mix(old,sleeve_weights,arm_mask))
+
+ # Use a continuous spatial weight field across the armpit. Vertices a few
+ # millimetres apart can belong to different scan fragments and therefore
+ # have very different topology-based weights before this correction.
+ for v in mesh.data.vertices:
+  i=v.index
+  if i in hands or i in seam or i not in other:continue
+  x,y,z=v.co
+  offset=sign*(x-shoulder.x)
+  if sign*x<.10 or offset>.175 or not 1.18<z<1.565:continue
+  blend=smooth(1.18,1.25,z)*(1-smooth(.105,.175,offset))
+  blend*=smooth(.10,.15,sign*x)
+  if blend<.001:continue
+  arm_part=smooth(-.02,.105,offset)*(1-smooth(1.49,1.56,z))
+  shoulder_part=max(0.,4*arm_part*(1-arm_part))*.16
+  spine_part=1-arm_part-shoulder_part
+  upper_chest=smooth(1.22,1.37,z)
+  target={upper:arm_part,clavicle:shoulder_part,'Spine1':spine_part*upper_chest,'Spine':spine_part*(1-upper_chest)}
+  old={mesh.vertex_groups[g.group].name:g.weight for g in v.groups}
+  setweights(i,mix(old,target,blend))
 mesh.data.update();fit_report['sleeve_vertices_transferred']=changed
 fit_report['matching_neck_seam_vertices']=len(seam)
 fit_report['finger_vertices']=sum(1 for v in mesh.data.vertices if any('Hand' in mesh.vertex_groups[g.group].name and not mesh.vertex_groups[g.group].name.endswith(('Hand','HandProp')) and g.weight>.01 for g in v.groups))

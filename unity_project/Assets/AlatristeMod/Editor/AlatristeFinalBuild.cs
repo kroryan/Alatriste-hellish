@@ -48,8 +48,20 @@ public static class AlatristeFinalBuild {
   // Red selects the jacket region. Alpha protects the animated sleeves,
   // hands and fingers from the larger clearance used around the torso.
   var vertices=mesh.vertices;
+  var segmentStarts=new[]{bones.First(b=>b.name=="LeftArm").position,bones.First(b=>b.name=="RightArm").position};
+  var segmentEnds=new[]{bones.First(b=>b.name=="LeftForeArm").position,bones.First(b=>b.name=="RightForeArm").position};
   mesh.colors32=mesh.boneWeights.Select((w,i)=>{
-   float arm=Mathf.SmoothStep(0,1,Mathf.InverseLerp(.22f,.80f,FppArmWeight(w,bones)));
+   float limbWeight=FppArmWeight(w,bones);
+   float arm=Mathf.SmoothStep(0,1,Mathf.InverseLerp(.12f,.65f,limbWeight));
+   for(int side=0;side<2;side++) {
+    var delta=segmentEnds[side]-segmentStarts[side];
+    var toVertex=vertices[i]-segmentStarts[side];
+    float along=Vector3.Dot(toVertex,delta)/delta.sqrMagnitude;
+    float distance=(toVertex-delta*Mathf.Clamp01(along)).magnitude;
+    float sleeve=Mathf.SmoothStep(0,1,Mathf.InverseLerp(.03f,.22f,along))*
+                 (1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(.056f,.107f,distance)));
+    arm=Mathf.Max(arm,sleeve);
+   }
    float jacket=Mathf.SmoothStep(0,1,Mathf.InverseLerp(.82f,1.12f,vertices[i].y));
    return new Color32((byte)Mathf.RoundToInt(jacket*255),255,255,(byte)Mathf.RoundToInt(arm*255));
   }).ToArray();
@@ -264,6 +276,7 @@ public static class AlatristeFinalBuild {
    CloseFingers(map,side);
    var target=Vector3.Lerp(map[side+"Arm"].position,map[side+"Hand"].position,.34f);
    Capture("Alatriste_Marta_extension_"+side,cam,new Vector3(sign*1.24f,1.48f,-1.55f),false,1000,900,target);
+   Capture("Alatriste_Marta_inner_"+side,cam,target+new Vector3(-sign*.58f,-.45f,1.0f),false,1000,900,target);
    foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
   }
   UnityEditor.SceneManagement.EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),D+"AlatristePreview.unity");

@@ -1,4 +1,6 @@
 """Add closed undershirt sleeves beneath the generated jacket."""
+from mathutils.bvhtree import BVHTree
+from mathutils.geometry import barycentric_transform
 body=next(part for part in parts if part.name=='AlatristeBody')
 old=body.data
 
@@ -51,48 +53,86 @@ for loop,uv in zip(old.loops,old.uv_layers.active.data):
     surface_uv.setdefault(loop.vertex_index,tuple(uv.uv))
 
 for side in ('Left','Right'):
-    upper,lower=side+'Arm',side+'ForeArm'
-    shoulder,elbow=[body.matrix_world.inverted() @ (MW @ original[n]).translation for n in (upper,lower)]
-    axis=(elbow-shoulder).normalized()
-    length=(elbow-shoulder).length
-    radial=axis.cross(Vector((0,0,1))).normalized()
-    vertical=radial.cross(axis).normalized()
+    upper,lower,hand=side+'Arm',side+'ForeArm',side+'Hand'
+    shoulder,elbow,wrist=[body.matrix_world.inverted() @ (MW @ original[n]).translation for n in (upper,lower,hand)]
+    upper_axis=(elbow-shoulder).normalized()
+    forearm_axis=(wrist-elbow).normalized()
+    upper_length=(elbow-shoulder).length
+    forearm_length=(wrist-elbow).length
+    length=upper_length+forearm_length
     sleeve=[]
     for vertex in old.vertices:
-        along=(vertex.co-shoulder).dot(axis)
+        upper_along=(vertex.co-shoulder).dot(upper_axis)
+        forearm_along=(vertex.co-elbow).dot(forearm_axis)
+        if (vertex.co-elbow).dot(upper_axis+forearm_axis)>0:
+            along=upper_length+forearm_along
+        else:
+            along=upper_along
         influence=sum(g.weight for g in vertex.groups if body.vertex_groups[g.group].name in (upper,lower))
-        if influence>.72 and -.02<along<length+.03:
+        if influence>.65 and -.02<along<length+.02:
             sleeve.append((vertex,along))
     if len(sleeve)<100:
         raise RuntimeError('Cannot locate sleeve backing on '+side)
-    cloth=min(sleeve,key=lambda item:abs(item[1]-.34*length)+
-              abs((item[0].co-shoulder).dot(radial))+
-              abs((item[0].co-shoulder).dot(vertical)+.062))[0]
+    sleeve_ids={vertex.index for vertex,_ in sleeve}
+    sleeve_polys=[tuple(poly.vertices) for poly in old.polygons
+                  if len(poly.vertices)==3 and sum(index in sleeve_ids for index in poly.vertices)>=2]
+    outer_positions=[vertex.co.copy() for vertex in old.vertices]
+    sleeve_surface=BVHTree.FromPolygons(outer_positions,sleeve_polys,all_triangles=True)
+    cloth=min(sleeve,key=lambda item:abs(item[1]-.34*upper_length)+
+              (item[0].co-(shoulder+upper_axis*(.34*upper_length)-Vector((0,0,.06)))).length)[0]
     cloth_uv=surface_uv[cloth.index]
 
-    # Run the cloth from inside the jacket across the shoulder and down
-    # the upper sleeve. The lower half bridges the open axilla.
-    rings=13
-    segments=24
+    # A single closed undersleeve extends from inside the rib cage to the
+    # cuff, including the inner elbow that the short axilla plug missed.
+    rings=28
+    segments=28
     start=len(vertices)
     for j in range(rings):
         t=j/(rings-1)
-        along=length*(-.35+.93*t)
-        center=shoulder+axis*along
-        nearby=[v.co-(shoulder+axis*a) for v,a in sleeve if abs(a-along)<.032]
+        along=-.113+(length+.104)*t
+        elbow_mix=smooth(-.070,.070,along-upper_length)
+        axis=upper_axis.lerp(forearm_axis,elbow_mix).normalized()
+        radial=axis.cross(Vector((0,0,1))).normalized()
+        vertical=radial.cross(axis).normalized()
+        center=shoulder+upper_axis*min(along,upper_length)+forearm_axis*max(0.,along-upper_length)
+        nearby=[v.co-center for v,a in sleeve if abs(a-along)<.027]
         if len(nearby)>24:
-            center+=radial*float(np.median([v.dot(radial) for v in nearby]))*.80
-            center+=vertical*float(np.median([v.dot(vertical) for v in nearby]))*.80
-        profile=(.58+.42*math.sin(math.pi*t))*(1-.21*t)
-        center-=vertical*.010
+            center+=radial*np.clip(np.median([v.dot(radial) for v in nearby]),-.026,.026)*.65
+            center+=vertical*np.clip(np.median([v.dot(vertical) for v in nearby]),-.026,.026)*.65
+        taper=smooth(upper_length,length,along)
+        width=.035-.016*taper
+        depth=.033-.016*taper
+        axilla=(1-smooth(.050,.138,abs(along)))
+        center-=vertical*(.015*axilla)
+        chest=1-smooth(-.055,.106,along)
+        wrist_mix=smooth(length-.062,length+.014,along)*.72
         for k in range(segments):
             angle=2*math.pi*k/segments
             lower_half=max(0.,-math.sin(angle))
-            p=center+profile*(radial*(.041*math.cos(angle))+vertical*((.032+.038*lower_half)*math.sin(angle)))
+            radius=radial*(width*math.cos(angle))+vertical*((depth+.025*axilla*lower_half)*math.sin(angle))
+            point,_,polygon,outer_radius=sleeve_surface.ray_cast(center,radius.normalized(),.15)
+            weighted={upper:(1-chest)*(1-elbow_mix),lower:(1-chest)*elbow_mix*(1-wrist_mix),
+                      hand:(1-chest)*elbow_mix*wrist_mix,'Spine1':chest}
+            if polygon is not None:
+                # Keep the liner under the surface and make built-in folds
+                # share the outer sleeve's animation at the same angle.
+                radius=radius.normalized()*min(radius.length,max(.005,outer_radius*.70))
+                if len(sleeve_polys[polygon])==3 and along>.025:
+                    indices=sleeve_polys[polygon]
+                    a,b,c=[outer_positions[i] for i in indices]
+                    barycentric=barycentric_transform(point,a,b,c,Vector((1,0,0)),Vector((0,1,0)),Vector((0,0,1)))
+                    sampled={}
+                    for i,influence in zip(indices,barycentric):
+                        for group in old.vertices[i].groups:
+                            name=body.vertex_groups[group.group].name
+                            sampled[name]=sampled.get(name,0.)+max(0.,influence)*group.weight
+                    weighted=mix(weighted,sampled,.82*smooth(.025,.105,along))
+            p=center+radius
             vertices.append(tuple(p))
             uvs.append((cloth_uv[0]+.001*math.cos(angle),cloth_uv[1]+.002*t))
-            chest=1-smooth(.08,.47,t)
-            weights.append({upper:1-chest,'Spine1':chest})
+            strongest=sorted(weighted.items(),key=lambda item:item[1],reverse=True)[:4]
+            total=sum(w for _,w in strongest)
+            weights.append({name:w/total for name,w in strongest})
     for j in range(rings-1):
         for k in range(segments):
             a=start+j*segments+k
@@ -110,6 +150,8 @@ lining_mesh.from_pydata(vertices,[],faces)
 bm=bmesh.new()
 bm.from_mesh(lining_mesh)
 bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces))
+if any(not edge.is_manifold for edge in bm.edges):
+    raise RuntimeError('The undersleeve must be a closed surface')
 bm.to_mesh(lining_mesh)
 bm.free()
 lining_mesh.materials.append(old.materials[0])

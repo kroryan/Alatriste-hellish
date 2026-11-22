@@ -7,6 +7,7 @@ A fan-made character skin for Marta in *Hellish Quart*. It uses Marta's original
 - [Unity build and rig integration](unity_project/Assets/AlatristeMod/Editor/AlatristeFinalBuild.cs) builds the skin and selector portrait from the editable assets.
 - [Camera shader](unity_project/Assets/AlatristeMod/AlatristeDetailed.shader) clears geometry around the first-person camera while keeping the complete model visible in external shots.
 - [Visibility controller](unity_project/Assets/AlatristeMod/Editor/AlatristeFppBuilder.cs) handles the original Marta face meshes that the game can reactivate during a camera change.
+- The body and rigid head use readable skinned meshes in the same bind space, with one submesh each for the game's wound projector. The source model includes opaque fabric lining on both sleeves and matching weights on the neck seam.
 - [Optional manual FPP adjustment](FPP.md) documents the four-byte change to Marta's native skin-loading controller, the exact compatible build, and the verification data.
 
 The editable Blender rig and the input GLB are in [model/](model/). The Unity project includes the mod's FBX, materials, textures, prefabs, preview scene and bone mapping. It does not distribute the game assemblies, original game meshes, the modding kit, or the compiled Nexus release.
@@ -23,5 +24,7 @@ The editable Blender rig and the input GLB are in [model/](model/). The Unity pr
 Close the game. In Steam, choose **Manage → Browse local files** for *Hellish Quart*. Copy the four release files directly into `Hellish Quart_Data/StreamingAssets/`. Start the game, select Marta, and choose Alatriste under **Custom Skin**. Remove the same four files to uninstall.
 
 Use **Alatriste → Abrir escena** to open the Unity preview. The original in-game rapier mesh used in local pose previews is optional and excluded from this repository. Blender 5.3 can open `model/Alatriste_Marta.blend` for mesh and rig edits.
+
+The [Blender scripts](blender_work/) record the fitting, weight transfer and sleeve lining. Re-running the initial fit requires private reference data from a local game installation. The editable Blender rig and the Unity build already include the fitted output.
 
 Thanks to Kubold for *Hellish Quart* and its modding tools, and to Arturo Pérez-Reverte for the character who inspired the skin.

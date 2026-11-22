@@ -34,4 +34,5 @@ Material:
     m_Floats:
     - _BumpScale: 0.7
     - _HeadCameraRadius: 0.3
-    m_Colors: []
+    m_Colors:
+    - _HeadRestAnchor: {r: 0.01862649, g: 1.6143436, b: 0.013882738, a: 1}

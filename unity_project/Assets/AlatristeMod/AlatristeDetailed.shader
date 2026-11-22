@@ -5,6 +5,7 @@ Shader "Alatriste/DetailedTwoSided" {
   _ORM ("Occlusion Roughness Metallic", 2D) = "white" {}
   _BumpScale ("Normal strength", Range(0,2)) = 1
   [HideInInspector] _HeadCameraRadius ("Eye clearance near the head pivot", Float) = 0
+  [HideInInspector] _HeadRestAnchor ("Head pivot in skin space", Vector) = (0,1.6,0,1)
  }
  SubShader {
   Tags { "RenderType"="Opaque" "Queue"="Geometry" }
@@ -17,21 +18,24 @@ Shader "Alatriste/DetailedTwoSided" {
   sampler2D _MainTex, _BumpMap, _ORM;
   half _BumpScale;
   float _HeadCameraRadius;
+  float4 _HeadRestAnchor;
   struct Input {float2 uv_MainTex; float3 worldPos; float4 color : COLOR; float facing : VFACE;};
+  float EyeProximity() {
+   float3 root = mul(unity_ObjectToWorld, float4(0,0,0,1)).xyz;
+   float3 toEye = _WorldSpaceCameraPos - root;
+   return (1 - smoothstep(.21, .40, length(toEye.xz))) *
+          smoothstep(1.21, 1.40, toEye.y) * (1 - smoothstep(1.96, 2.12, toEye.y));
+  }
   void EyeClearance(inout appdata_full v) {
    #if !defined(UNITY_PASS_SHADOWCASTER) && !defined(UNITY_PASS_META)
    if (_HeadCameraRadius == 0 && unity_OrthoParams.w < 0.5) {
     // The game's eye camera can be directly above the chest in a downward
     // view. Move the torso visually behind the eye, leaving the weapon arm
     // aligned with the real hand and preserving the unmodified wide view.
-    float3 root = mul(unity_ObjectToWorld, float4(0,0,0,1)).xyz;
-    float3 toEye = _WorldSpaceCameraPos - root;
-    float atEye = (1 - smoothstep(.24, .44, length(toEye.xz))) *
-                  smoothstep(1.10, 1.37, toEye.y) * (1 - smoothstep(1.96, 2.18, toEye.y));
     float3 forward = -UNITY_MATRIX_V[2].xyz;
     forward.y = 0;
     forward *= rsqrt(max(dot(forward,forward), .04));
-    float offset = .29 * atEye * (1 - v.color.a);
+    float offset = .29 * EyeProximity() * (1 - v.color.a);
     v.vertex.xyz -= mul((float3x3)unity_WorldToObject, forward * offset);
    }
    #endif
@@ -40,17 +44,14 @@ Shader "Alatriste/DetailedTwoSided" {
    #if !defined(UNITY_PASS_SHADOWCASTER) && !defined(UNITY_PASS_META)
    if (unity_OrthoParams.w < 0.5) {
     if (_HeadCameraRadius > 0) {
-     float3 headPivot = mul(unity_ObjectToWorld, float4(0,0,0,1)).xyz;
+     float3 headPivot = mul(unity_ObjectToWorld, _HeadRestAnchor).xyz;
      clip(distance(_WorldSpaceCameraPos, headPivot) - _HeadCameraRadius);
-    } else {
-     // Preserve the whole model for wide shots. Only geometry very close to
-     // the eye camera is cut, with a smaller clearance for hands and sleeves.
+    } else if (EyeProximity() > .01) {
      float cameraDistance = distance(_WorldSpaceCameraPos, IN.worldPos);
-     // Near the eye, showing the reverse faces of the jacket exposes its
-     // inside when the view cuts across the neck opening.
-     if (IN.facing < 0) clip(cameraDistance - lerp(1.65, 0.22, IN.color.a));
+     float eye = EyeProximity();
+     if (IN.facing < 0) clip(cameraDistance - eye * lerp(1.35, 0.13, IN.color.a));
      float bodyClearance = lerp(0.12, 0.39, IN.color.r);
-     clip(cameraDistance - lerp(bodyClearance, 0.055, IN.color.a));
+     clip(cameraDistance - eye * lerp(bodyClearance, 0.04, IN.color.a));
     }
    }
    #endif

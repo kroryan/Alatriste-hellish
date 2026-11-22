@@ -1264,6 +1264,7 @@ Transform:
   m_Children:
   - {fileID: 663834408847873689}
   - {fileID: 585507430397318933}
+  - {fileID: 8399233145404141330}
   - {fileID: 6034343542895000894}
   m_Father: {fileID: 0}
   m_RootOrder: 0
@@ -1579,7 +1580,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 4684648158545694545}
-  m_RootOrder: 2
+  m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &2502945006684369131
 MonoBehaviour:
@@ -2359,8 +2360,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8399233145404141330}
-  - component: {fileID: 8385541539113241075}
-  - component: {fileID: 2724579700689400895}
+  - component: {fileID: 2618782413813509401}
   m_Layer: 0
   m_Name: AlatristeHead
   m_TagString: Untagged
@@ -2379,19 +2379,11 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
-  m_Father: {fileID: 165695557586206587}
-  m_RootOrder: 0
+  m_Father: {fileID: 4684648158545694545}
+  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!33 &8385541539113241075
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7391374486503776542}
-  m_Mesh: {fileID: 4300000, guid: b33abf2950c355a48a98e31635242539, type: 2}
---- !u!23 &2724579700689400895
-MeshRenderer:
+--- !u!137 &2618782413813509401
+SkinnedMeshRenderer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
@@ -2404,7 +2396,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
+  m_RayTracingMode: 0
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -2429,6 +2421,19 @@ MeshRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
+  serializedVersion: 2
+  m_Quality: 4
+  m_UpdateWhenOffscreen: 1
+  m_SkinnedMotionVectors: 1
+  m_Mesh: {fileID: 4300000, guid: 842ea53aea5b50541b4219f0578eee17, type: 2}
+  m_Bones:
+  - {fileID: 165695557586206587}
+  m_BlendShapeWeights: []
+  m_RootBone: {fileID: 663834408847873689}
+  m_AABB:
+    m_Center: {x: -0.020550378, y: 1.7618475, z: -0.0014074296}
+    m_Extent: {x: 0.26223224, y: 0.15807235, z: 0.26089555}
+  m_DirtyAABB: 0
 --- !u!1 &7455393879617947516
 GameObject:
   m_ObjectHideFlags: 0
@@ -2983,8 +2988,7 @@ Transform:
   m_LocalRotation: {x: -0.12924264, y: 0.025557445, z: 0.03679523, w: 0.99060047}
   m_LocalPosition: {x: -0.0069486243, y: 0.10753628, z: -0.00071932486}
   m_LocalScale: {x: 0.97348, y: 0.97348, z: 0.97348}
-  m_Children:
-  - {fileID: 8399233145404141330}
+  m_Children: []
   m_Father: {fileID: 3787572685782567162}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

@@ -78,42 +78,58 @@ public static class AlatristeFinalBuild {
   var source=UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(D+"Skin.fbx"));
   var skin=MakeMartaSkeleton();
   var map=skin.GetComponentsInChildren<Transform>().ToDictionary(t=>t.name,t=>t);
+  var headRest=skin.transform.InverseTransformPoint(map["Head"].position);
+  headMat.SetVector("_HeadRestAnchor",new Vector4(headRest.x,headRest.y,headRest.z,1));
   foreach(var a in skin.GetComponentsInChildren<Animator>())UnityEngine.Object.DestroyImmediate(a);
   foreach(var a in skin.GetComponentsInChildren<Animation>())UnityEngine.Object.DestroyImmediate(a);
   int triangles=0;float maxRotDifference=0;int rigidHeadCount=0;
   foreach(var r in source.GetComponentsInChildren<SkinnedMeshRenderer>()) {
    bool head=r.name.Contains("Head");
    var child=new GameObject(head?"AlatristeHead":"AlatristeBody");
-   var parent=head?map["Head"]:skin.transform;child.transform.SetParent(parent,false);
-   var mesh=UnityEngine.Object.Instantiate(r.sharedMesh);mesh.name=child.name;
+   // The native decal system shares bind poses by bone identity. Keep
+   // both renderers in one mesh space so their shared Head bind agrees.
+   var parent=skin.transform;child.transform.SetParent(parent,false);
+   var imported=r.sharedMesh;
+   var mesh=new Mesh { name=child.name,indexFormat=IndexFormat.UInt32 };
    var matrix=parent.worldToLocalMatrix*r.transform.localToWorldMatrix;
-   var normalMatrix=matrix.inverse.transpose;var v=mesh.vertices;var n=mesh.normals;var tang=mesh.tangents;
+   var normalMatrix=matrix.inverse.transpose;var v=imported.vertices;var n=imported.normals;var tang=imported.tangents;
    for(int i=0;i<v.Length;i++) {
     v[i]=matrix.MultiplyPoint3x4(v[i]);if(n.Length==v.Length)n[i]=normalMatrix.MultiplyVector(n[i]).normalized;
     if(tang.Length==v.Length){var q=matrix.MultiplyVector(new Vector3(tang[i].x,tang[i].y,tang[i].z)).normalized;tang[i]=new Vector4(q.x,q.y,q.z,tang[i].w*(matrix.determinant<0?-1:1));}
    }
-   mesh.vertices=v;if(n.Length==v.Length)mesh.normals=n;if(tang.Length==v.Length)mesh.tangents=tang;
-   if(matrix.determinant<0)for(int s=0;s<mesh.subMeshCount;s++){var t=mesh.GetTriangles(s);for(int i=0;i<t.Length;i+=3){int q=t[i];t[i]=t[i+1];t[i+1]=q;}mesh.SetTriangles(t,s);}
+   mesh.vertices=v;mesh.normals=n;mesh.tangents=tang;mesh.uv=imported.uv;
+   var joinedTriangles=new List<int>();
+   for(int s=0;s<imported.subMeshCount;s++)joinedTriangles.AddRange(imported.GetTriangles(s,true));
+   if(matrix.determinant<0)for(int i=0;i<joinedTriangles.Count;i+=3) {
+    int first=joinedTriangles[i];joinedTriangles[i]=joinedTriangles[i+1];joinedTriangles[i+1]=first;
+   }
+   mesh.SetTriangles(joinedTriangles,0);
    mesh.RecalculateBounds();triangles+=mesh.triangles.Length/3;
-   string path=D+child.name+".asset";var existing=AssetDatabase.LoadAssetAtPath<Mesh>(path);
+   string path=D+child.name+(head?"RigidSkin":"")+".asset";var existing=AssetDatabase.LoadAssetAtPath<Mesh>(path);
+   var bones=head?new[]{map["Head"]}:r.bones.Select(b=>map[b.name]).ToArray();
    if(head) {
-    // A MeshRenderer parented to Head cannot be deformed by skin weights,
-    // facial animation, jaw transforms or blend shapes.
-    mesh.boneWeights=new BoneWeight[0];mesh.bindposes=new Matrix4x4[0];rigidHeadCount=v.Length;
+    // Marta's decal projector discovers SkinnedMeshRenderers. A single
+    // Head influence gives it the rigid face and hat without facial skinning.
+    mesh.boneWeights=Enumerable.Repeat(new BoneWeight{boneIndex0=0,weight0=1},v.Length).ToArray();
+    rigidHeadCount=v.Length;
    }else {
-    var bones=r.bones.Select(b=>map[b.name]).ToArray();mesh.bindposes=bones.Select(b=>b.worldToLocalMatrix*child.transform.localToWorldMatrix).ToArray();
+    mesh.boneWeights=imported.boneWeights;
     SetCameraClearanceMask(mesh,bones);
     for(int i=0;i<bones.Length;i++)maxRotDifference=Mathf.Max(maxRotDifference,Quaternion.Angle(r.bones[i].rotation,bones[i].rotation));
    }
+   mesh.bindposes=bones.Select(b=>b.worldToLocalMatrix*child.transform.localToWorldMatrix).ToArray();
    if(existing==null){AssetDatabase.CreateAsset(mesh,path);existing=mesh;}else{EditorUtility.CopySerialized(mesh,existing);UnityEngine.Object.DestroyImmediate(mesh);EditorUtility.SetDirty(existing);}
-   if(head){child.AddComponent<MeshFilter>().sharedMesh=existing;child.AddComponent<MeshRenderer>().sharedMaterials=Enumerable.Repeat(headMat,existing.subMeshCount).ToArray();}
-   else {
-    var bones=r.bones.Select(b=>map[b.name]).ToArray();
-    var smr=child.AddComponent<SkinnedMeshRenderer>();smr.sharedMesh=existing;smr.bones=bones;smr.rootBone=map["Root"];smr.sharedMaterials=Enumerable.Repeat(mat,existing.subMeshCount).ToArray();smr.quality=SkinQuality.Bone4;smr.updateWhenOffscreen=true;smr.localBounds=new Bounds(new Vector3(0,1,0),Vector3.one*5);
-   }
+   var smr=child.AddComponent<SkinnedMeshRenderer>();
+   smr.sharedMesh=existing;
+   smr.bones=bones;
+   smr.rootBone=map["Root"];
+   smr.sharedMaterial=head?headMat:mat;
+   smr.quality=SkinQuality.Bone4;
+   smr.updateWhenOffscreen=true;
+   smr.localBounds=head?existing.bounds:new Bounds(new Vector3(0,1,0),Vector3.one*5);
   }
   if(rigidHeadCount<1000)throw new Exception("Rigid head is missing");
-  if(skin.GetComponentsInChildren<SkinnedMeshRenderer>().Length!=1)throw new Exception("Expected one deforming body");
+  VerifyDecalMeshes(skin);
   AlatristeFppBuilder.Attach(skin);
   PrefabUtility.SaveAsPrefabAsset(skin,D+"Skin.prefab");UnityEngine.Object.DestroyImmediate(source);UnityEngine.Object.DestroyImmediate(skin);AssetDatabase.SaveAssets();
   MakeSelectorPortrait();AssetDatabase.ImportAsset(D+"Skin_pic.png",ImportAssetOptions.ForceUpdate);
@@ -125,8 +141,29 @@ public static class AlatristeFinalBuild {
   var builds=new[]{new AssetBundleBuild{assetBundleName="skin_marta_alatriste",assetNames=new[]{D+"Skin.prefab"}},new AssetBundleBuild{assetBundleName="pic_marta_alatriste",assetNames=new[]{D+"Skin_pic.prefab"}}};
   if(BuildPipeline.BuildAssetBundles(outDir,builds,BuildAssetBundleOptions.ChunkBasedCompression,BuildTarget.StandaloneWindows64)==null)throw new Exception("Bundle build failed");
   foreach(var name in new[]{"skin_marta_alatriste","pic_marta_alatriste"}) {var b=AssetBundle.LoadFromFile(Path.Combine(outDir,name));if(b==null)throw new Exception("Bundle load failed");if(b.LoadAllAssets<GameObject>().Length!=1)throw new Exception("Prefab count invalid");b.Unload(true);}
-  File.WriteAllText(Path.Combine(Root,"unity_build_report.txt"),"Source: alatriste_img.glb\nCharacter: Marta only (native Mafra5/Marfa rig)\nUnity "+Application.unityVersion+"\nTriangles: "+triangles+"\nRigid head MeshRenderer vertices: "+rigidHeadCount+"\nNative Marta skeleton: 68 joints, original local positions/rotations/scales.\nHand and sleeve weights adapted from Marta's local reference; finger articulation enabled.\n4K PBR maps, readable body mesh, four bone weights per vertex.\nSelector portrait: transparent background.\nBoth Marta-specific bundles loaded successfully.\n");
+  File.WriteAllText(Path.Combine(Root,"unity_build_report.txt"),"Source: alatriste_img.glb\nCharacter: Marta only (native Mafra5/Marfa rig)\nUnity "+Application.unityVersion+"\nTriangles: "+triangles+"\nRigid head skinned to Head only: "+rigidHeadCount+" vertices\nReadable body and head, each with one wound-projection submesh.\nNative Marta skeleton: 68 joints, original local positions/rotations/scales.\nBoth Marta-specific bundles loaded successfully.\n");
   Debug.Log("ALATRISTE_MARTA_BUILD_OK");
+ }
+ static void VerifyDecalMeshes(GameObject skin) {
+  var renderers=skin.GetComponentsInChildren<SkinnedMeshRenderer>();
+  if(renderers.Length!=2)throw new Exception("Expected body and rigid head for wound projection");
+  foreach(var renderer in renderers) {
+   var mesh=renderer.sharedMesh;
+   if(!mesh.isReadable||mesh.subMeshCount!=1||mesh.boneWeights.Length!=mesh.vertexCount||
+      mesh.normals.Length!=mesh.vertexCount||mesh.tangents.Length!=mesh.vertexCount)
+    throw new Exception("Incomplete wound projection inputs: "+renderer.name);
+  }
+  var head=renderers.Single(r=>r.name=="AlatristeHead");
+  var body=renderers.Single(r=>r.name=="AlatristeBody");
+  var sharedHead=Array.IndexOf(body.bones,head.bones.Single());
+  if(sharedHead<0||body.sharedMesh.bindposes[sharedHead]!=head.sharedMesh.bindposes[0])
+   throw new Exception("Head and body disagree on the shared decal bind pose");
+  var points=head.sharedMesh.vertices;
+  var indices=head.sharedMesh.triangles;
+  for(int i=0;i<indices.Length;i+=3)
+   for(int j=0;j<3;j++)
+    if(Vector3.Distance(points[indices[i+j]],points[indices[i+(j+1)%3]])>.19f)
+     throw new Exception("Unexpected stretched triangle in the rigid head mesh");
  }
  static void MakeSelectorPortrait() {
   AlatristeBuild.MakeScene();var camera=UnityEngine.Object.FindObjectOfType<Camera>();camera.backgroundColor=new Color(0,0,0,0);camera.clearFlags=CameraClearFlags.SolidColor;
@@ -203,7 +240,19 @@ public static class AlatristeFinalBuild {
   var prop=map["RightHandProp"];cam.orthographicSize=.19f;Capture("Alatriste_Marta_hand_closeup",cam,prop.position+new Vector3(.3f,.2f,.65f),false,1000,1000,prop.position);cam.orthographicSize=1.18f;
   map["RightForeArm"].localRotation*=Quaternion.AngleAxis(65,Vector3.right);Capture("Alatriste_Marta_pronation",cam,new Vector3(-1.5f,1.1f,4));
   UnityEngine.Object.DestroyImmediate(sword);foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
-  map["Head"].localRotation*=Quaternion.Euler(20,40,15);Capture("Alatriste_Unity_head_test",cam,new Vector3(0,1,4));
+  map["Neck"].localRotation*=Quaternion.Euler(-18,22,-9);
+  map["Head"].localRotation*=Quaternion.Euler(20,32,15);
+  map["Spine1"].localRotation*=Quaternion.Euler(9,-26,13);
+  cam.orthographicSize=.35f;
+  Capture("Alatriste_Unity_head_test",cam,new Vector3(.45f,1.65f,3),false,900,900,new Vector3(0,1.52f,0));
+  foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
+  foreach(var side in new[]{"Left","Right"}) {
+   float sign=side=="Right"?1:-1;
+   Aim(map,side+"Arm",side+"ForeArm",new Vector3(sign*.78f,.56f,.28f));
+   Aim(map,side+"ForeArm",side+"Hand",new Vector3(sign*.05f,.78f,-.5f));
+  }
+  cam.orthographic=false;
+  Capture("Alatriste_Marta_underarms",cam,new Vector3(.08f,1.04f,.94f),false,1000,950,new Vector3(0,1.49f,0));
   foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
   UnityEditor.SceneManagement.EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),D+"AlatristePreview.unity");
  }

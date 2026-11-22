@@ -278,6 +278,11 @@ public static class AlatristeFinalBuild {
    Capture("Alatriste_Marta_extension_"+side,cam,new Vector3(sign*1.24f,1.48f,-1.55f),false,1000,900,target);
    Capture("Alatriste_Marta_inner_"+side,cam,target+new Vector3(-sign*.58f,-.45f,1.0f),false,1000,900,target);
    foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
+   Aim(map,side+"Arm",side+"ForeArm",new Vector3(sign*.14f,.60f,.78f));
+   Aim(map,side+"ForeArm",side+"Hand",new Vector3(sign*.09f,.72f,.60f));
+   target=Vector3.Lerp(map[side+"Arm"].position,map[side+"ForeArm"].position,.44f);
+   Capture("Alatriste_Marta_raised_"+side,cam,target+new Vector3(sign*.88f,-.10f,-1.18f),false,1000,900,target);
+   foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
   }
   UnityEditor.SceneManagement.EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),D+"AlatristePreview.unity");
  }

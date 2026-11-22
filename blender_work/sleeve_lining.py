@@ -28,14 +28,22 @@ while boundaries:
     if any(sum(edge in boundary for edge in v.link_edges)!=2 for v in rim):continue
     center=sum((v.co for v in rim),Vector())/len(rim)
     if not (.155<abs(center.x)<.43 and 1.25<center.z<1.49):continue
-    if max((v.co-center).length for v in rim)>.085:continue
+    # Large openings need the independently skinned gusset below. A fan
+    # across such a rim becomes a sheet dragged between chest and biceps.
+    if max((v.co-center).length for v in rim)>.047:continue
     seam_uv={v:next((loop[uv_layer].uv.copy() for loop in v.link_loops),None) for v in rim}
     patch=bmesh.ops.holes_fill(shell,edges=list(boundary),sides=145)['faces']
+    # Select the nearest existing UV chart on each rim, never a random
+    # vertex loop that may point to an unrelated part of the texture atlas.
     for face in patch:
         face.smooth=True
         face.material_index=0
-        for loop in face.loops:
-            if seam_uv[loop.vert] is not None:loop[uv_layer].uv=seam_uv[loop.vert]
+        seed=next((seam_uv[v] for v in rim if seam_uv[v] is not None),None)
+        if seed is not None:
+            for loop in face.loops:
+                candidates=[l[uv_layer].uv for l in loop.vert.link_loops if l.face not in patch]
+                uv=min(candidates,key=lambda uv:(uv-seed).length_squared) if candidates else seed
+                loop[uv_layer].uv=uv if (uv-seed).length<.045 else seed
     if patch:
         bmesh.ops.triangulate(shell,faces=patch)
         patched+=1
@@ -102,21 +110,21 @@ for side in ('Left','Right'):
         taper=smooth(upper_length,length,along)
         width=.035-.016*taper
         depth=.033-.016*taper
-        axilla=(1-smooth(.050,.138,abs(along)))
-        center-=vertical*(.015*axilla)
+        axilla=(1-smooth(.040,.154,abs(along)))
+        center-=vertical*(.014*axilla)
         chest=1-smooth(-.055,.106,along)
         wrist_mix=smooth(length-.062,length+.014,along)*.72
         for k in range(segments):
             angle=2*math.pi*k/segments
             lower_half=max(0.,-math.sin(angle))
-            radius=radial*(width*math.cos(angle))+vertical*((depth+.025*axilla*lower_half)*math.sin(angle))
+            radius=radial*((width+.013*axilla*lower_half)*math.cos(angle))+vertical*((depth+.032*axilla*lower_half)*math.sin(angle))
             point,_,polygon,outer_radius=sleeve_surface.ray_cast(center,radius.normalized(),.15)
             weighted={upper:(1-chest)*(1-elbow_mix),lower:(1-chest)*elbow_mix*(1-wrist_mix),
                       hand:(1-chest)*elbow_mix*wrist_mix,'Spine1':chest}
             if polygon is not None:
                 # Keep the liner under the surface and make built-in folds
                 # share the outer sleeve's animation at the same angle.
-                radius=radius.normalized()*min(radius.length,max(.005,outer_radius*.70))
+                radius=radius.normalized()*min(radius.length,max(.005,outer_radius*.73))
                 if len(sleeve_polys[polygon])==3 and along>.025:
                     indices=sleeve_polys[polygon]
                     a,b,c=[outer_positions[i] for i in indices]
@@ -130,6 +138,10 @@ for side in ('Left','Right'):
             p=center+radius
             vertices.append(tuple(p))
             uvs.append((cloth_uv[0]+.001*math.cos(angle),cloth_uv[1]+.002*t))
+            # The gusset remains partly rooted in the chest under the upper
+            # arm so the fabric covers the angle as the shoulder opens.
+            gusset=axilla*lower_half*(1-smooth(.045,.14,along))
+            weighted=mix(weighted,{'Spine1':.70,upper:.30},.64*gusset)
             strongest=sorted(weighted.items(),key=lambda item:item[1],reverse=True)[:4]
             total=sum(w for _,w in strongest)
             weights.append({name:w/total for name,w in strongest})
@@ -144,6 +156,50 @@ for side in ('Left','Right'):
         for k in range(1,segments-1):
             face=(ring,ring+k,ring+k+1)
             faces.append(face[::-1] if reverse else face)
+
+# The upper sleeve moves away from the ribs during a high guard. A separate
+# opaque torso layer covers the side of the jacket exposed by that motion.
+torso_ids={v.index for v in old.vertices if 1.16<v.co.z<1.53 and abs(v.co.x)<.275
+           and sum(g.weight for g in v.groups
+                   if body.vertex_groups[g.group].name in ('Spine','Spine1','Neck'))>.64}
+torso_faces=[poly for poly in old.polygons if len(poly.vertices)==3
+             and sum(index in torso_ids for index in poly.vertices)>=2]
+torso_polys=[tuple(poly.vertices) for poly in torso_faces]
+torso_surface=BVHTree.FromPolygons(outer_positions,torso_polys,all_triangles=True)
+atlas=old.uv_layers.active.data
+torso_uvs=[tuple(atlas[i].uv.copy() for i in poly.loop_indices) for poly in torso_faces]
+start=len(vertices)
+torso_rings=24
+torso_segments=48
+for j in range(torso_rings):
+    t=j/(torso_rings-1)
+    z=1.198+.284*t
+    center=Vector((.018,-.024,z))
+    spine=smooth(1.205,1.36,z)
+    for k in range(torso_segments):
+        angle=2*math.pi*k/torso_segments
+        direction=Vector((math.cos(angle),math.sin(angle),0))
+        expected=1/math.sqrt((direction.x/.168)**2+(direction.y/.112)**2)
+        hit,_,polygon,distance=torso_surface.ray_cast(center,direction,.28)
+        radius=expected if hit is None else min(expected*1.05,max(.078,distance-.012))
+        vertices.append(tuple(center+radius*direction))
+        if polygon is None:
+            hit,_,polygon,_=torso_surface.find_nearest(center+expected*direction)
+        a,b,c=[outer_positions[i] for i in torso_polys[polygon]]
+        u,v,w=[Vector((uv.x,uv.y,0)) for uv in torso_uvs[polygon]]
+        projected=barycentric_transform(hit,a,b,c,u,v,w)
+        uvs.append((projected.x,projected.y))
+        weights.append({'Spine1':spine,'Spine':1-spine})
+for j in range(torso_rings-1):
+    for k in range(torso_segments):
+        a=start+j*torso_segments+k
+        b=start+j*torso_segments+(k+1)%torso_segments
+        faces.extend(((a,b,b+torso_segments),(a,b+torso_segments,a+torso_segments)))
+for j,reverse in ((0,True),(torso_rings-1,False)):
+    ring=start+j*torso_segments
+    for k in range(1,torso_segments-1):
+        face=(ring,ring+k,ring+k+1)
+        faces.append(face[::-1] if reverse else face)
 
 lining_mesh=bpy.data.meshes.new('OpaqueSleeveLining')
 lining_mesh.from_pydata(vertices,[],faces)

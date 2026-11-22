@@ -190,7 +190,9 @@ for side,sign in (('Left',1),('Right',-1)):
   sleeve_core=smooth(.035,.135,along)*(1-smooth(.08,.13,radial_distance))*smooth(.20,.29,sign*V[i,0])
   arm_mask=max(smooth(.20,.72,arm_sum),sleeve_core)
   if arm_mask<.001:continue
-  elbow_mix=smooth(-.072,.08,longitudinal)
+  # Keep the sleeve attached rigidly along most of each segment. Only the
+  # immediate elbow crease should compress as the forearm bends.
+  elbow_mix=smooth(-.052,.061,longitudinal)
   wrist_mix=smooth(-.060,.024,(v.co-wrist).dot(lower_axis))*.92
   shoulder_mix=(1-smooth(-.018,.075,along))*.20
   sleeve_weights={
@@ -213,7 +215,8 @@ for side,sign in (('Left',1),('Right',-1)):
   blend=smooth(1.18,1.25,z)*(1-smooth(.105,.175,offset))
   blend*=smooth(.10,.15,sign*x)
   if blend<.001:continue
-  arm_part=smooth(-.02,.105,offset)*(1-smooth(1.49,1.56,z))
+  underarm=1-smooth(1.34,1.46,z)
+  arm_part=smooth(-.026-.008*underarm,.105+.039*underarm,offset)*(1-smooth(1.49,1.56,z))
   shoulder_part=max(0.,4*arm_part*(1-arm_part))*.16
   spine_part=1-arm_part-shoulder_part
   upper_chest=smooth(1.22,1.37,z)

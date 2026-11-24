@@ -144,10 +144,7 @@ public static class AlatristeFinalBuild {
   VerifyDecalMeshes(skin);
   AlatristeFppBuilder.Attach(skin);
   PrefabUtility.SaveAsPrefabAsset(skin,D+"Skin.prefab");UnityEngine.Object.DestroyImmediate(source);UnityEngine.Object.DestroyImmediate(skin);AssetDatabase.SaveAssets();
-  MakeSelectorPortrait();AssetDatabase.ImportAsset(D+"Skin_pic.png",ImportAssetOptions.ForceUpdate);
-  var pic=(TextureImporter)AssetImporter.GetAtPath(D+"Skin_pic.png");pic.textureType=TextureImporterType.Sprite;pic.spriteImportMode=SpriteImportMode.Single;pic.maxTextureSize=1024;pic.alphaSource=TextureImporterAlphaSource.FromInput;pic.alphaIsTransparency=true;pic.SaveAndReimport();
-  var go=new GameObject("Skin_pic",typeof(RectTransform),typeof(UnityEngine.UI.Image));go.layer=5;go.GetComponent<UnityEngine.UI.Image>().sprite=AssetDatabase.LoadAssetAtPath<Sprite>(D+"Skin_pic.png");go.GetComponent<UnityEngine.UI.Image>().preserveAspect=true;
-  go.GetComponent<UnityEngine.UI.Image>().raycastTarget=false;go.GetComponent<RectTransform>().sizeDelta=new Vector2(2160,3840);PrefabUtility.SaveAsPrefabAsset(go,D+"Skin_pic.prefab");UnityEngine.Object.DestroyImmediate(go);
+  ImportSelectorPortrait();
   ValidateAndRender();
   var outDir=Path.Combine(Root,"mod_alatriste");Directory.CreateDirectory(outDir);
   var builds=new[]{new AssetBundleBuild{assetBundleName="skin_marta_alatriste",assetNames=new[]{D+"Skin.prefab"}},new AssetBundleBuild{assetBundleName="pic_marta_alatriste",assetNames=new[]{D+"Skin_pic.prefab"}}};
@@ -177,12 +174,47 @@ public static class AlatristeFinalBuild {
     if(Vector3.Distance(points[indices[i+j]],points[indices[i+(j+1)%3]])>.19f)
      throw new Exception("Unexpected stretched triangle in the rigid head mesh");
  }
- static void MakeSelectorPortrait() {
-  AlatristeBuild.MakeScene();var camera=UnityEngine.Object.FindObjectOfType<Camera>();camera.backgroundColor=new Color(0,0,0,0);camera.clearFlags=CameraClearFlags.SolidColor;
-  var map=GameObject.Find("Skin").GetComponentsInChildren<Transform>().ToDictionary(t=>t.name,t=>t);var sword=PreviewSword(map);
-  GuardPose(map);CloseFingers(map,"Right");CloseFingers(map,"Left");camera.orthographicSize=1.12f;
-  Capture("Alatriste_Marta_selector",camera,new Vector3(-.55f,1.02f,4),true,1024,1536);
-  File.Copy(Path.Combine(Root,"Alatriste_Marta_selector.png"),D+"Skin_pic.png",true);UnityEngine.Object.DestroyImmediate(sword);
+ static void ImportSelectorPortrait() {
+  string path=D+"Skin_pic.png";
+  AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceUpdate);
+  var importer=(TextureImporter)AssetImporter.GetAtPath(path);
+  importer.textureType=TextureImporterType.Sprite;
+  importer.spriteImportMode=SpriteImportMode.Single;
+  importer.maxTextureSize=2048;
+  importer.npotScale=TextureImporterNPOTScale.None;
+  importer.alphaSource=TextureImporterAlphaSource.None;
+  importer.alphaIsTransparency=false;
+  importer.SaveAndReimport();
+  var sprite=AssetDatabase.LoadAssetAtPath<Sprite>(path);
+  if(!sprite)throw new Exception("Selector portrait failed to import");
+  var go=new GameObject("Skin_pic",typeof(RectTransform),typeof(UnityEngine.UI.Image));
+  go.layer=5;
+  var portrait=go.GetComponent<UnityEngine.UI.Image>();
+  portrait.sprite=sprite;
+  portrait.preserveAspect=true;
+  portrait.raycastTarget=false;
+  go.GetComponent<RectTransform>().sizeDelta=new Vector2(2160,3840);
+  PrefabUtility.SaveAsPrefabAsset(go,D+"Skin_pic.prefab");
+  UnityEngine.Object.DestroyImmediate(go);
+ }
+ public static void BuildSelectorOnly() {
+  ImportSelectorPortrait();
+  AssetDatabase.SaveAssets();
+  var output=Path.Combine(Root,"_jobs","alatriste_selector_build");
+  Directory.CreateDirectory(output);
+  const string name="pic_marta_alatriste";
+  var builds=new[]{new AssetBundleBuild {assetBundleName=name,assetNames=new[]{D+"Skin_pic.prefab"}}};
+  if(BuildPipeline.BuildAssetBundles(output,builds,BuildAssetBundleOptions.ChunkBasedCompression,BuildTarget.StandaloneWindows64)==null)
+   throw new Exception("Selector bundle build failed");
+  var bundle=AssetBundle.LoadFromFile(Path.Combine(output,name));
+  if(!bundle)throw new Exception("Selector bundle could not be loaded");
+  try {
+   var prefab=bundle.LoadAllAssets<GameObject>().Single();
+   var sprite=prefab.GetComponent<UnityEngine.UI.Image>().sprite;
+   var expected=AssetDatabase.LoadAssetAtPath<Sprite>(D+"Skin_pic.png");
+   if(!sprite || sprite.rect.size!=expected.rect.size)throw new Exception("Incorrect selector sprite in bundle");
+   Debug.Log("ALATRISTE_SELECTOR_OK "+sprite.rect.width+"x"+sprite.rect.height);
+  } finally {bundle.Unload(true);}
  }
  static void Capture(string name,Camera cam,Vector3 position,bool transparent=false,int width=1000,int height=1200,Vector3? target=null) {
   // Editor camera renders can reuse cached skinning when no player frame ran.

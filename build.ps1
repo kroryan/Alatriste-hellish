@@ -18,6 +18,6 @@ $names = 'skin_marta_alatriste', 'skin_marta_alatriste.manifest', 'pic_marta_ala
 foreach ($n in $names) { Copy-Item (Join-Path $out $n) $rel -Force }
 $zip = Join-Path $root 'Alatriste_Marta.zip'
 if (Test-Path $zip) { Remove-Item $zip }
-$files = @($names | % { Join-Path $rel $_ }) + @('LEEME.txt','Install_Alatriste_Marta.ps1','Install_Alatriste_Marta.cmd','Uninstall_Alatriste_Marta.cmd','marta_fpp_patch.json' | % { Join-Path $rel $_ })
+$files = @($names | % { Join-Path $rel $_ }) + @(Join-Path $rel 'README.txt')  # releases never ship scripts: Nexus flags them
 Compress-Archive -Path $files -DestinationPath $zip
 "BUILD_OK $zip"

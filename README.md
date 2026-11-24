@@ -25,7 +25,7 @@ A fan-made character skin for Marta in *Hellish Quart*. It runs on Marta's nativ
   - `step3_rig_marta.py` scales the model, fits Marta's limbs and hands, computes the weights, carries the mesh into Marta's bind pose and splits off the rigid head;
   - `verify_skeleton.py` checks the 68 bones and the weights.
 - `unity_project/`: Unity 2019.4.0f1 project (menu **Alatriste → Construir mod**).
-- `release/`: the installer (`.cmd`/`.ps1`), the FPP patch data and `LEEME.txt`.
+- `release/README.txt`: the English text shipped in the zip. The zip contains only the four bundles and this README; releases never include scripts.
 - [Optional manual FPP adjustment](FPP.md).
 
 ## Rebuild
@@ -42,10 +42,14 @@ $skel="unity_project\Assets\AlatristeMod\Editor\MartaSkeleton.json"
 .\build.ps1
 ```
 
-`build.ps1` runs the Unity batch build and copies the four bundles into `release/`. It also creates `Alatriste_Marta.zip`.
+`build.ps1` is a developer build script and is never part of the release. It runs the Unity batch build and copies the four bundles into `release/`. It also creates `Alatriste_Marta.zip`.
 
 ## Install
 
-Close the game and run `release/Install_Alatriste_Marta.cmd`. It copies the four bundles into `Hellish Quart_Data/StreamingAssets/` and applies the FPP adjustment after checking the original bytes by hash. Then select Marta and choose Alatriste under **Custom Skin**. `Uninstall_Alatriste_Marta.cmd` removes it.
+Close the game and copy the four bundles from the zip into `Hellish Quart_Data/StreamingAssets/`. Then select Marta and choose the skin under **Custom Skin**. Delete the same four files to uninstall.
+
+## First-person (FPP) adjustment
+
+Optional and manual: `release/README.txt` lists the 4 bytes of Marta's skin loader (PlayMaker FSM, path ID 67770) in `resources.assets` to change with a hex editor. On Steam build 26432078 the true event of `isFPP?` goes from `yes` to `no`, so first person uses the selected custom skin.
 
 Thanks to Kubold for *Hellish Quart* and its modding tools, and to Arturo Pérez-Reverte for the character who inspired the skin.

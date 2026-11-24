@@ -189,6 +189,13 @@ point('LeftArm', 'LeftForeArm', (.4, .2, -.4))
 render('test_guard', (2, -4, 1.1))
 for pb in arm.pose.bones: pb.matrix_basis = Matrix.Identity(4)
 bpy.context.view_layer.update()
+# Fighting twist: spine bent and turned, as in Marta's attacks; checks the back.
+for n, e in (('Spine', (12, 18, 6)), ('Spine1', (10, 24, 8))):
+    pb = arm.pose.bones[n]; pb.rotation_mode = 'XYZ'; pb.rotation_euler = [math.radians(a) for a in e]
+point('RightArm', 'RightForeArm', (-.25, -.7, -.25)); point('RightForeArm', 'RightHand', (.15, -.8, .15))
+render('test_twist_back', (-1.5, 4, 1.2)); render('test_twist_side', (4, .8, 1.2))
+for pb in arm.pose.bones: pb.matrix_basis = Matrix.Identity(4)
+bpy.context.view_layer.update()
 cam.data.ortho_scale = .55; render('head_closeup', (0, -4, 1.62), (0, 0, 1.62)); render('head_side', (4, 0, 1.62), (0, 0, 1.62))
 
 # --- Save and export ------------------------------------------------------------

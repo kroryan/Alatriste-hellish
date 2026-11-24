@@ -1,30 +1,51 @@
 # Captain Alatriste for Marta
 
-A fan-made character skin for Marta in *Hellish Quart*. It uses Marta's original moves and rapier. The source includes the Alatriste model, its textures, and the Unity build code.
+A fan-made character skin for Marta in *Hellish Quart*. It runs on Marta's native 68-joint skeleton, with her original moves and rapier, and ships with the Marta first-person (FPP) compatibility adjustment.
 
-## For reviewers
+- **Clean model.** A T-pose source without extra ornaments. It has PBR textures at 2048 and is reduced from 2M to 80k triangles. Each part stays under the 65k vertices the game's wound decal builder supports.
+- **Joints from the geometry.** The source has no rig. [step2_landmarks.py](blender_work/step2_landmarks.py) places the joints itself:
+  - shoulders, elbows and wrists come from vertical sections of the horizontal arms, and the wrist sits one hand length from the fingertips;
+  - knees and ankles come from the leg sections;
+  - the trunk follows Marta's proportions;
+  - the fingers use Marta's hand layout, palm down.
+- **Bone-heat weights, no shoulder triangles.** [heat_weights.py](blender_work/heat_weights.py) solves bone heat on a watertight voxel proxy at 10× scale, then copies the weights back to the real mesh. A vertex only follows bones it can "see" through the mesh, so the torso side and the armpit never follow the arm.
+- **No stretched neck.** Alatriste's shoulders are 7 cm higher than Marta's, so the whole model is scaled to her shoulder height (×0.953) instead of stretching or squashing parts.
+- **Rigid head and hair.**
+- **No ghost body when hit.** Marta's 17 wound overlay meshes (`DecalBloody`, `DecalSpine1`, ...) are shaped like her own body. The visibility controller keeps them hidden under the skin, together with her stock face.
 
-- [Unity build and rig integration](unity_project/Assets/AlatristeMod/Editor/AlatristeFinalBuild.cs) builds the skin and selector portrait from the editable assets.
-- [Camera shader](unity_project/Assets/AlatristeMod/AlatristeDetailed.shader) clears geometry around the first-person camera while keeping the complete model visible in external shots.
-- [Visibility controller](unity_project/Assets/AlatristeMod/Editor/AlatristeFppBuilder.cs) handles the original Marta face meshes that the game can reactivate during a camera change.
-- The body and rigid head use readable skinned meshes in the same bind space, with one submesh each for the game's wound projector. The source model includes opaque fabric lining on both sleeves and matching weights on the neck seam.
-- [Optional manual FPP adjustment](FPP.md) documents the four-byte change to Marta's native skin-loading controller, the exact compatible build, and the verification data.
+## Layout
 
-The editable Blender rig and the input GLB are in [model/](model/). The Unity project includes the mod's FBX, materials, textures, prefabs, preview scene and bone mapping. It does not distribute the game assemblies, original game meshes, the modding kit, or the compiled Nexus release.
+- `model/Alatriste_Marta.blend`: the fitted result on Marta's skeleton, editable in Blender 5.3.
+- `model/references/`: the four reference views.
+- `model/selector_portrait.png`: the selector picture.
+- `model/Alatriste_source.glb` is not in the repository because of its size (75 MB). Place it there to rebuild from scratch.
+- `blender_work/`:
+  - `step1_prepare.py` decimates and cleans the source and exports the textures (the glTF MR map is the shader's ORM);
+  - `step2_landmarks.py` derives the joints;
+  - `step3_rig_marta.py` scales the model, fits Marta's limbs and hands, computes the weights, carries the mesh into Marta's bind pose and splits off the rigid head;
+  - `verify_skeleton.py` checks the 68 bones and the weights.
+- `unity_project/`: Unity 2019.4.0f1 project (menu **Alatriste → Construir mod**).
+- `release/`: the installer (`.cmd`/`.ps1`), the FPP patch data and `LEEME.txt`.
+- [Optional manual FPP adjustment](FPP.md).
 
-## Build on Windows
+## Rebuild
 
-1. Install Unity **2019.4.0f1** with Windows Standalone build support.
-2. From your own Hellish Quart installation, copy `Hellish Quart_Data/Managed/PlayMaker.dll` to `unity_project/Assets/Plugins/PlayMaker.dll`. Keep the checked-in `.meta` file so the prefab finds that dependency. If Unity prompts to update the assembly for this editor version, accept the update.
-3. Add `unity_project` to Unity Hub and open it. Use **Alatriste → Construir mod** to build the Windows bundles. The build writes the two bundles and their manifests to `mod_alatriste/` at the repository root.
-4. To prepare the release ZIP, include `skin_marta_alatriste`, `pic_marta_alatriste`, and their two `.manifest` files. The extra Unity bundle index and its manifest are build outputs only.
+Copy `Hellish Quart_Data/Managed/PlayMaker.dll` from your own installation to `unity_project/Assets/Plugins/`, then run:
 
-## Install the skin manually
+```powershell
+$blender="C:\Program Files\Blender Foundation\Blender 5.3\blender.exe"
+$skel="unity_project\Assets\AlatristeMod\Editor\MartaSkeleton.json"
+& $blender -b --factory-startup -P blender_work\step1_prepare.py -- model\Alatriste_source.glb model\Alatriste_source.glb build
+& $blender -b --factory-startup -P blender_work\step2_landmarks.py -- build $skel
+& $blender -b --factory-startup -P blender_work\step3_rig_marta.py -- build $skel
+& $blender -b --factory-startup -P blender_work\verify_skeleton.py -- build\marta\Skin.fbx $skel
+.\build.ps1
+```
 
-Close the game. In Steam, choose **Manage → Browse local files** for *Hellish Quart*. Copy the four release files directly into `Hellish Quart_Data/StreamingAssets/`. Start the game, select Marta, and choose Alatriste under **Custom Skin**. Remove the same four files to uninstall.
+`build.ps1` runs the Unity batch build and copies the four bundles into `release/`. It also creates `Alatriste_Marta.zip`.
 
-Use **Alatriste → Abrir escena** to open the Unity preview. The original in-game rapier mesh used in local pose previews is optional and excluded from this repository. Blender 5.3 can open `model/Alatriste_Marta.blend` for mesh and rig edits.
+## Install
 
-The [Blender scripts](blender_work/) record the fitting, weight transfer and sleeve lining. Re-running the initial fit requires private reference data from a local game installation. The editable Blender rig and the Unity build already include the fitted output.
+Close the game and run `release/Install_Alatriste_Marta.cmd`. It copies the four bundles into `Hellish Quart_Data/StreamingAssets/` and applies the FPP adjustment after checking the original bytes by hash. Then select Marta and choose Alatriste under **Custom Skin**. `Uninstall_Alatriste_Marta.cmd` removes it.
 
 Thanks to Kubold for *Hellish Quart* and its modding tools, and to Arturo Pérez-Reverte for the character who inspired the skin.

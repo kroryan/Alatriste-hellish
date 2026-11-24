@@ -82,11 +82,13 @@ public static class AlatristeFinalBuild {
   mat.SetTexture("_MainTex",AssetDatabase.LoadAssetAtPath<Texture2D>(D+"Alatriste_BaseColor.png"));
   mat.SetTexture("_BumpMap",AssetDatabase.LoadAssetAtPath<Texture2D>(D+"Alatriste_Normal.png"));
   mat.SetTexture("_ORM",AssetDatabase.LoadAssetAtPath<Texture2D>(D+"Alatriste_ORM.png"));mat.SetFloat("_BumpScale",.7f);
-  mat.SetFloat("_HeadCameraRadius",0);EditorUtility.SetDirty(mat);
+  mat.SetFloat("_HeadCameraRadius",0);mat.SetFloat("_ColorDepth",1.3f);mat.SetFloat("_Saturation",1.15f);EditorUtility.SetDirty(mat);
   var headMat=AssetDatabase.LoadAssetAtPath<Material>(D+"AlatristeHead.mat");
   if(headMat==null){headMat=new Material(mat);AssetDatabase.CreateAsset(headMat,D+"AlatristeHead.mat");}
   headMat.shader=shader;headMat.CopyPropertiesFromMaterial(mat);
-  headMat.SetFloat("_HeadCameraRadius",.30f);EditorUtility.SetDirty(headMat);
+  // Full head clearance must allow for the native camera's displacement
+  // in thrusts and reactions, while external shots stay outside this radius.
+  headMat.SetFloat("_HeadCameraRadius",.49f);EditorUtility.SetDirty(headMat);
   var source=UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(D+"Skin.fbx"));
   var skin=MakeMartaSkeleton();
   var map=skin.GetComponentsInChildren<Transform>().ToDictionary(t=>t.name,t=>t);
@@ -144,13 +146,16 @@ public static class AlatristeFinalBuild {
   VerifyDecalMeshes(skin);
   AlatristeFppBuilder.Attach(skin);
   PrefabUtility.SaveAsPrefabAsset(skin,D+"Skin.prefab");UnityEngine.Object.DestroyImmediate(source);UnityEngine.Object.DestroyImmediate(skin);AssetDatabase.SaveAssets();
-  ImportSelectorPortrait();
+  MakeSelectorPortrait();AssetDatabase.ImportAsset(D+"Skin_pic.png",ImportAssetOptions.ForceUpdate);
+  var pic=(TextureImporter)AssetImporter.GetAtPath(D+"Skin_pic.png");pic.textureType=TextureImporterType.Sprite;pic.spriteImportMode=SpriteImportMode.Single;pic.maxTextureSize=2048;pic.alphaSource=TextureImporterAlphaSource.FromInput;pic.alphaIsTransparency=true;pic.SaveAndReimport();
+  var go=new GameObject("Skin_pic",typeof(RectTransform),typeof(UnityEngine.UI.Image));go.layer=5;go.GetComponent<UnityEngine.UI.Image>().sprite=AssetDatabase.LoadAssetAtPath<Sprite>(D+"Skin_pic.png");go.GetComponent<UnityEngine.UI.Image>().preserveAspect=true;
+  go.GetComponent<UnityEngine.UI.Image>().raycastTarget=false;go.GetComponent<RectTransform>().sizeDelta=new Vector2(2160,3840);PrefabUtility.SaveAsPrefabAsset(go,D+"Skin_pic.prefab");UnityEngine.Object.DestroyImmediate(go);
   ValidateAndRender();
   var outDir=Path.Combine(Root,"mod_alatriste");Directory.CreateDirectory(outDir);
   var builds=new[]{new AssetBundleBuild{assetBundleName="skin_marta_alatriste",assetNames=new[]{D+"Skin.prefab"}},new AssetBundleBuild{assetBundleName="pic_marta_alatriste",assetNames=new[]{D+"Skin_pic.prefab"}}};
   if(BuildPipeline.BuildAssetBundles(outDir,builds,BuildAssetBundleOptions.ChunkBasedCompression,BuildTarget.StandaloneWindows64)==null)throw new Exception("Bundle build failed");
   foreach(var name in new[]{"skin_marta_alatriste","pic_marta_alatriste"}) {var b=AssetBundle.LoadFromFile(Path.Combine(outDir,name));if(b==null)throw new Exception("Bundle load failed");if(b.LoadAllAssets<GameObject>().Length!=1)throw new Exception("Prefab count invalid");b.Unload(true);}
-  File.WriteAllText(Path.Combine(Root,"unity_build_report.txt"),"Source: alatriste_img.glb\nCharacter: Marta only (native Mafra5/Marfa rig)\nUnity "+Application.unityVersion+"\nTriangles: "+triangles+"\nRigid head skinned to Head only: "+rigidHeadCount+" vertices\nReadable body and head, each with one wound-projection submesh.\nNative Marta skeleton: 68 joints, original local positions/rotations/scales.\nBoth Marta-specific bundles loaded successfully.\n");
+  File.WriteAllText(Path.Combine(Root,"unity_build_report.txt"),"Source: Alatriste_source.glb (T-pose PBR model, geometry-derived joints, bone-heat weights, decimated to the game budget)\nCharacter: Marta only (native Mafra5/Marfa rig)\nUnity "+Application.unityVersion+"\nTriangles: "+triangles+"\nRigid head skinned to Head only: "+rigidHeadCount+" vertices\nReadable body and head, each with one wound-projection submesh.\nNative Marta skeleton: 68 joints, original local positions/rotations/scales.\nBoth Marta-specific bundles loaded successfully.\n");
   Debug.Log("ALATRISTE_MARTA_BUILD_OK");
  }
  static void VerifyDecalMeshes(GameObject skin) {
@@ -172,49 +177,52 @@ public static class AlatristeFinalBuild {
   for(int i=0;i<indices.Length;i+=3)
    for(int j=0;j<3;j++)
     if(Vector3.Distance(points[indices[i+j]],points[indices[i+(j+1)%3]])>.19f)
-     throw new Exception("Unexpected stretched triangle in the rigid head mesh");
+     throw new Exception("Unexpected stretched triangle in the rigid head mesh: "+indices[i+j]+" "+points[indices[i+j]].ToString("F3")+" -> "+indices[i+(j+1)%3]+" "+points[indices[i+(j+1)%3]].ToString("F3")+" verts="+points.Length);
  }
- static void ImportSelectorPortrait() {
-  string path=D+"Skin_pic.png";
-  AssetDatabase.ImportAsset(path,ImportAssetOptions.ForceUpdate);
-  var importer=(TextureImporter)AssetImporter.GetAtPath(path);
-  importer.textureType=TextureImporterType.Sprite;
-  importer.spriteImportMode=SpriteImportMode.Single;
-  importer.maxTextureSize=2048;
-  importer.npotScale=TextureImporterNPOTScale.None;
-  importer.alphaSource=TextureImporterAlphaSource.None;
-  importer.alphaIsTransparency=false;
-  importer.SaveAndReimport();
-  var sprite=AssetDatabase.LoadAssetAtPath<Sprite>(path);
-  if(!sprite)throw new Exception("Selector portrait failed to import");
-  var go=new GameObject("Skin_pic",typeof(RectTransform),typeof(UnityEngine.UI.Image));
-  go.layer=5;
-  var portrait=go.GetComponent<UnityEngine.UI.Image>();
-  portrait.sprite=sprite;
-  portrait.preserveAspect=true;
-  portrait.raycastTarget=false;
-  go.GetComponent<RectTransform>().sizeDelta=new Vector2(2160,3840);
-  PrefabUtility.SaveAsPrefabAsset(go,D+"Skin_pic.prefab");
-  UnityEngine.Object.DestroyImmediate(go);
+ static void MakeSelectorPortrait() {
+  // A supplied artwork (model/selector_portrait.png) is the selector image;
+  // the 3D render below is the fallback when no artwork is present.
+  string art=Path.Combine(Root,"model/selector_portrait.png");
+  if(File.Exists(art)){File.Copy(art,D+"Skin_pic.png",true);return;}
+  AlatristeBuild.MakeScene();var camera=UnityEngine.Object.FindObjectOfType<Camera>();camera.backgroundColor=new Color(0,0,0,0);camera.clearFlags=CameraClearFlags.SolidColor;
+  var map=GameObject.Find("Skin").GetComponentsInChildren<Transform>().ToDictionary(t=>t.name,t=>t);
+  // Relaxed standing pose with nothing in the hands: the selector shows the
+  // character, not a weapon grip.
+  RelaxedPose(map);
+  PortraitLights();
+  camera.orthographic=false;camera.fieldOfView=27f;camera.nearClipPlane=.1f;
+  Capture("Alatriste_Marta_selector",camera,new Vector3(-1.75f,1.15f,5.0f),true,1024,1536,new Vector3(0,.95f,0));
+  File.Copy(Path.Combine(Root,"Alatriste_Marta_selector.png"),D+"Skin_pic.png",true);
  }
- public static void BuildSelectorOnly() {
-  ImportSelectorPortrait();
-  AssetDatabase.SaveAssets();
-  var output=Path.Combine(Root,"_jobs","alatriste_selector_build");
-  Directory.CreateDirectory(output);
-  const string name="pic_marta_alatriste";
-  var builds=new[]{new AssetBundleBuild {assetBundleName=name,assetNames=new[]{D+"Skin_pic.prefab"}}};
-  if(BuildPipeline.BuildAssetBundles(output,builds,BuildAssetBundleOptions.ChunkBasedCompression,BuildTarget.StandaloneWindows64)==null)
-   throw new Exception("Selector bundle build failed");
-  var bundle=AssetBundle.LoadFromFile(Path.Combine(output,name));
-  if(!bundle)throw new Exception("Selector bundle could not be loaded");
-  try {
-   var prefab=bundle.LoadAllAssets<GameObject>().Single();
-   var sprite=prefab.GetComponent<UnityEngine.UI.Image>().sprite;
-   var expected=AssetDatabase.LoadAssetAtPath<Sprite>(D+"Skin_pic.png");
-   if(!sprite || sprite.rect.size!=expected.rect.size)throw new Exception("Incorrect selector sprite in bundle");
-   Debug.Log("ALATRISTE_SELECTOR_OK "+sprite.rect.width+"x"+sprite.rect.height);
-  } finally {bundle.Unload(true);}
+ static void RelaxedPose(Dictionary<string,Transform> map) {
+  foreach(var side in new[]{"Left","Right"}) {
+   float x=side=="Left"?-1:1;
+   Aim(map,side+"Arm",side+"ForeArm",new Vector3(x*.34f,-1f,.02f));
+   Aim(map,side+"ForeArm",side+"Hand",new Vector3(x*.16f,-1f,.22f));
+   Aim(map,side+"Hand",side+"HandMiddle1",new Vector3(x*.08f,-1f,.12f));
+   // Palm towards the thigh: roll the hand about the forearm axis.
+   var hand=map[side+"Hand"];var palmSide=map[side+"HandIndex1"].position-map[side+"HandPinky1"].position;
+   var axis=(map[side+"HandMiddle1"].position-hand.position).normalized;
+   var want=Vector3.ProjectOnPlane(Vector3.forward,axis);var have=Vector3.ProjectOnPlane(palmSide,axis);
+   if(have.sqrMagnitude>1e-6&&want.sqrMagnitude>1e-6)hand.rotation=Quaternion.AngleAxis(Vector3.SignedAngle(have,want,axis),axis)*hand.rotation;
+   RelaxFingers(map,side);
+  }
+ }
+ static void RelaxFingers(Dictionary<string,Transform> map,string side) {
+  float sign=side=="Right"?1:-1;
+  foreach(var finger in new[]{"Index","Middle","Ring","Pinky"}) {
+   float a=finger=="Index"?10:finger=="Middle"?14:finger=="Ring"?18:22;
+   for(int j=1;j<=3;j++)map[side+"Hand"+finger+j].localRotation*=Quaternion.AngleAxis(sign*(j==1?a:a*.9f),Vector3.forward);
+  }
+  map[side+"HandThumb2"].localRotation*=Quaternion.AngleAxis(sign*10,Vector3.forward);
+ }
+ static void PortraitLights() {
+  foreach(var l in UnityEngine.Object.FindObjectsOfType<Light>())UnityEngine.Object.DestroyImmediate(l.gameObject);
+  void Add(string n,float intensity,Vector3 euler,Color c){var l=new GameObject(n,typeof(Light)).GetComponent<Light>();l.type=LightType.Directional;l.intensity=intensity;l.color=c;l.shadows=LightShadows.Soft;l.transform.rotation=Quaternion.Euler(euler);}
+  Add("Key",.85f,new Vector3(28,145,0),new Color(1f,.96f,.9f));
+  Add("Fill",.28f,new Vector3(12,-140,0),new Color(.85f,.9f,1f));
+  Add("Rim",.55f,new Vector3(18,20,0),new Color(1f,.93f,.85f));
+  RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Flat;RenderSettings.ambientLight=new Color(.30f,.31f,.34f);
  }
  static void Capture(string name,Camera cam,Vector3 position,bool transparent=false,int width=1000,int height=1200,Vector3? target=null) {
   // Editor camera renders can reuse cached skinning when no player frame ran.
@@ -278,6 +286,8 @@ public static class AlatristeFinalBuild {
   cam.orthographic=false;cam.fieldOfView=65f;cam.nearClipPlane=.03f;
   var eye=map["Head"].position+new Vector3(0,.09f,.07f);
   Capture("Alatriste_Marta_fpp",cam,eye,false,1280,720,eye+new Vector3(0,-.34f,1));
+  var displacedEye=eye+new Vector3(.26f,.04f,.09f);
+  Capture("Alatriste_Marta_fpp_offset",cam,displacedEye,false,1280,720,displacedEye+new Vector3(0,-.34f,1));
   Capture("Alatriste_Marta_fpp_down",cam,eye,false,1280,720,eye+new Vector3(0,-1,.44f));
   Capture("Alatriste_Marta_fpp_wide",cam,new Vector3(-1.4f,1.4f,3.2f),false,1080,1080);
   cam.orthographic=true;
@@ -314,13 +324,6 @@ public static class AlatristeFinalBuild {
    Aim(map,side+"ForeArm",side+"Hand",new Vector3(sign*.09f,.72f,.60f));
    target=Vector3.Lerp(map[side+"Arm"].position,map[side+"ForeArm"].position,.44f);
    Capture("Alatriste_Marta_raised_"+side,cam,target+new Vector3(sign*.88f,-.10f,-1.18f),false,1000,900,target);
-   if(side=="Right") {
-    var background=cam.backgroundColor;
-    cam.backgroundColor=new Color(.87f,.22f,.53f);
-    var armpit=Vector3.Lerp(map["RightArm"].position,map["RightForeArm"].position,.23f)+Vector3.down*.075f;
-    Capture("Alatriste_Marta_raised_underarm",cam,armpit+new Vector3(.83f,-.16f,-.55f),false,1100,950,armpit);
-    cam.backgroundColor=background;
-   }
    foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
   }
   UnityEditor.SceneManagement.EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),D+"AlatristePreview.unity");

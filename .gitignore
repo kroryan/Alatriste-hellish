@@ -12,3 +12,10 @@
 /Alatriste_*.png
 *.blend1
 *.zip
+
+/build/
+/release/skin_marta_alatriste*
+/release/pic_marta_alatriste*
+/release/marta_loader_backup.bin
+/model/Alatriste_source.glb
+/Alatriste_Marta.zip

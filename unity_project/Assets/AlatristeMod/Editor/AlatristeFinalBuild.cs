@@ -282,6 +282,13 @@ public static class AlatristeFinalBuild {
    Aim(map,side+"ForeArm",side+"Hand",new Vector3(sign*.09f,.72f,.60f));
    target=Vector3.Lerp(map[side+"Arm"].position,map[side+"ForeArm"].position,.44f);
    Capture("Alatriste_Marta_raised_"+side,cam,target+new Vector3(sign*.88f,-.10f,-1.18f),false,1000,900,target);
+   if(side=="Right") {
+    var background=cam.backgroundColor;
+    cam.backgroundColor=new Color(.87f,.22f,.53f);
+    var armpit=Vector3.Lerp(map["RightArm"].position,map["RightForeArm"].position,.23f)+Vector3.down*.075f;
+    Capture("Alatriste_Marta_raised_underarm",cam,armpit+new Vector3(.83f,-.16f,-.55f),false,1100,950,armpit);
+    cam.backgroundColor=background;
+   }
    foreach(var kv in saved)map[kv.Key].localRotation=kv.Value;
   }
   UnityEditor.SceneManagement.EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene(),D+"AlatristePreview.unity");

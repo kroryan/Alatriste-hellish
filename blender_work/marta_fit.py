@@ -212,11 +212,11 @@ for side,sign in (('Left',1),('Right',-1)):
   x,y,z=v.co
   offset=sign*(x-shoulder.x)
   if sign*x<.10 or offset>.175 or not 1.18<z<1.565:continue
-  blend=smooth(1.18,1.25,z)*(1-smooth(.105,.175,offset))
+  blend=smooth(1.18,1.27,z)*(1-smooth(.088,.165,offset))
   blend*=smooth(.10,.15,sign*x)
   if blend<.001:continue
   underarm=1-smooth(1.34,1.46,z)
-  arm_part=smooth(-.026-.008*underarm,.105+.039*underarm,offset)*(1-smooth(1.49,1.56,z))
+  arm_part=smooth(-.017+.018*underarm,.101+.026*underarm,offset)*(1-smooth(1.49,1.56,z))
   shoulder_part=max(0.,4*arm_part*(1-arm_part))*.16
   spine_part=1-arm_part-shoulder_part
   upper_chest=smooth(1.22,1.37,z)

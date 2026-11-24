@@ -110,21 +110,26 @@ for side in ('Left','Right'):
         taper=smooth(upper_length,length,along)
         width=.035-.016*taper
         depth=.033-.016*taper
-        axilla=(1-smooth(.040,.154,abs(along)))
+        axilla=(1-smooth(.042,.138,abs(along)))
         center-=vertical*(.014*axilla)
         chest=1-smooth(-.055,.106,along)
         wrist_mix=smooth(length-.062,length+.014,along)*.72
         for k in range(segments):
             angle=2*math.pi*k/segments
             lower_half=max(0.,-math.sin(angle))
-            radius=radial*((width+.013*axilla*lower_half)*math.cos(angle))+vertical*((depth+.032*axilla*lower_half)*math.sin(angle))
+            radius=radial*((width+.011*axilla*lower_half)*math.cos(angle))+vertical*((depth+.021*axilla*lower_half)*math.sin(angle))
+            # The inside seam has its own continuous gusset. Extend it
+            # toward the ribs even if another scan fragment intercepts
+            # the ray used to fit the rest of the liner.
+            gusset=axilla*lower_half*(1-smooth(.052,.135,along))
             point,_,polygon,outer_radius=sleeve_surface.ray_cast(center,radius.normalized(),.15)
             weighted={upper:(1-chest)*(1-elbow_mix),lower:(1-chest)*elbow_mix*(1-wrist_mix),
                       hand:(1-chest)*elbow_mix*wrist_mix,'Spine1':chest}
             if polygon is not None:
                 # Keep the liner under the surface and make built-in folds
                 # share the outer sleeve's animation at the same angle.
-                radius=radius.normalized()*min(radius.length,max(.005,outer_radius*.73))
+                inset=radius.normalized()*min(radius.length,max(.005,outer_radius*.73))
+                radius=inset.lerp(radius,.88*gusset)
                 if len(sleeve_polys[polygon])==3 and along>.025:
                     indices=sleeve_polys[polygon]
                     a,b,c=[outer_positions[i] for i in indices]
@@ -134,14 +139,14 @@ for side in ('Left','Right'):
                         for group in old.vertices[i].groups:
                             name=body.vertex_groups[group.group].name
                             sampled[name]=sampled.get(name,0.)+max(0.,influence)*group.weight
-                    weighted=mix(weighted,sampled,.82*smooth(.025,.105,along))
+                    weighted=mix(weighted,sampled,.82*smooth(.025,.105,along)*(1-gusset))
             p=center+radius
             vertices.append(tuple(p))
             uvs.append((cloth_uv[0]+.001*math.cos(angle),cloth_uv[1]+.002*t))
             # The gusset remains partly rooted in the chest under the upper
             # arm so the fabric covers the angle as the shoulder opens.
-            gusset=axilla*lower_half*(1-smooth(.045,.14,along))
-            weighted=mix(weighted,{'Spine1':.70,upper:.30},.64*gusset)
+            follow=smooth(-.045,.117,along)
+            weighted=mix(weighted,{'Spine1':1-follow,upper:follow},.90*gusset)
             strongest=sorted(weighted.items(),key=lambda item:item[1],reverse=True)[:4]
             total=sum(w for _,w in strongest)
             weights.append({name:w/total for name,w in strongest})
